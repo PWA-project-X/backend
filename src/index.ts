@@ -3,6 +3,7 @@ import cors from 'cors'
 import express from 'express'
 import { company } from './data/company.js'
 import { processSteps } from './data/process.js'
+import { projects } from './data/projects.js'
 import { services } from './data/services.js'
 
 const app = express()
@@ -34,6 +35,10 @@ app.get('/api/services', (_req, res) => {
 
 app.get('/api/process', (_req, res) => {
   res.json({ steps: processSteps })
+})
+
+app.get('/api/projects', (_req, res) => {
+  res.json({ projects })
 })
 
 app.listen(port, () => {
