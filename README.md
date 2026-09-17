@@ -30,6 +30,7 @@ A API sobe em `http://localhost:3001` (porta configurável via `PORT`).
 | `GET` | `/api/company` | Informações gerais do projeto (`name`, `project`, `city`, `description`, `proposal`) |
 | `GET` | `/api/services` | `{ "services": [{ "id", "title", "description" }] }` |
 | `GET` | `/api/process` | `{ "steps": [{ "id", "number", "title", "description" }] }` |
+| `GET` | `/api/projects` | `{ "projects": [{ "id", "title", "summary", "category" }] }` |
 
 Os dados são estáticos (sem banco de dados nesta versão).
 
@@ -54,7 +55,7 @@ CORS liberado para o Vite local (`5173` / `4173`).
 | RNF05 | Código organizado em arquivos separados |
 | RNF06 | Scripts no `package.json` |
 
-Extra in-scope: `GET /api/process` (etapas Entender / Criar / Compartilhar).
+Extras: `GET /api/process` e `GET /api/projects` (expansão do portfólio).
 
 ## Frontend
 
