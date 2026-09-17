@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import { company } from './data/company.js'
+import { services } from './data/services.js'
 
 const app = express()
 const port = Number(process.env.PORT) || 3001
@@ -19,6 +21,14 @@ app.use(express.json())
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true })
+})
+
+app.get('/api/company', (_req, res) => {
+  res.json(company)
+})
+
+app.get('/api/services', (_req, res) => {
+  res.json({ services })
 })
 
 app.listen(port, () => {
