@@ -1,0 +1,28 @@
+name: Chore
+description: Manutenção, CI, deps ou docs no backend
+title: "[chore] "
+labels: ["should"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Por que isso é necessário
+    validations:
+      required: true
+  - type: textarea
+    id: work
+    attributes:
+      label: Trabalho proposto
+    validations:
+      required: true
+  - type: dropdown
+    id: moscow
+    attributes:
+      label: Prioridade MoSCoW
+      options:
+        - must
+        - should
+        - could
+        - wont
+    validations:
+      required: true
