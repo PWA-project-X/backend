@@ -4,14 +4,12 @@ Priorização MoSCoW alinhada ao PDF de escopo (v0.1). Issues criadas nos reposi
 
 ## Must (alinhar conteúdo ao PDF)
 
-| Issue | Repo | Tema |
-| --- | --- | --- |
-| [#4](https://github.com/PWA-project-X/frontend/issues/4) | frontend | Serviços → Conteúdo 3D, RV, RA, Experiências imersivas |
-| [#3](https://github.com/PWA-project-X/backend/issues/3) | backend | Mesmo alinhamento em `/api/services` |
-| [#5](https://github.com/PWA-project-X/frontend/issues/5) | frontend | Processo etapa 03: Compartilhar → Entregar |
-| [#4](https://github.com/PWA-project-X/backend/issues/4) | backend | Mesmo alinhamento em `/api/process` |
-
-Implementação sob demanda do tech lead (mudança pequena de dados; não faz parte do pacote de governança).
+| Issue | Repo | Tema | Status |
+| --- | --- | --- | --- |
+| [#4](https://github.com/PWA-project-X/frontend/issues/4) | frontend | Serviços → Conteúdo 3D, RV, RA, Experiências imersivas | Feito |
+| [#3](https://github.com/PWA-project-X/backend/issues/3) | backend | Mesmo alinhamento em `/api/services` | Feito |
+| [#5](https://github.com/PWA-project-X/frontend/issues/5) | frontend | Processo etapa 03: Compartilhar → Entregar | Feito |
+| [#4](https://github.com/PWA-project-X/backend/issues/4) | backend | Mesmo alinhamento em `/api/process` | Feito |
 
 ## Should
 
@@ -30,10 +28,10 @@ git push origin --delete devlop
 
 ## Could (opcional no PDF — RF13 / RF14)
 
-| Issue | Repo | Tema |
-| --- | --- | --- |
-| [#8](https://github.com/PWA-project-X/frontend/issues/8) | frontend | Seção Insights/Blog visual |
-| [#9](https://github.com/PWA-project-X/frontend/issues/9) | frontend | Seção Contato visual (sem envio) |
+| Issue | Repo | Tema | Status |
+| --- | --- | --- | --- |
+| [#8](https://github.com/PWA-project-X/frontend/issues/8) | frontend | Seção Insights/Blog visual | Feito |
+| [#9](https://github.com/PWA-project-X/frontend/issues/9) | frontend | Seção Contato visual (sem envio) | Feito |
 
 ## Won't (v1)
 

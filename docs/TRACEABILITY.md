@@ -18,8 +18,8 @@ IDs conforme o documento *Escopo do Projeto — Portfólio Interno Miniverso* (2
 | RF10 | Fallback local se API indisponível | Feito | `api/client.ts` + `data/content.ts` |
 | RF11 | Rota `/health` no back-end | Feito | `backend/src/index.ts` |
 | RF12 | Manter configuração PWA | Feito | `frontend/vite.config.ts` (`vite-plugin-pwa`) |
-| RF13 | Seção de artigos / insights | Não na v1 (opcional) | Backlog Could |
-| RF14 | Seção de contato visual | Não na v1 (opcional) | Backlog Could |
+| RF13 | Seção de artigos / insights | Feito | `frontend/src/components/insightsSection/` |
+| RF14 | Seção de contato visual | Feito | `frontend/src/components/contactSection/` |
 
 ## Requisitos não funcionais
 

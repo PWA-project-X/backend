@@ -12,6 +12,13 @@ O formato segue a ideia de [Keep a Changelog](https://keepachangelog.com/pt-BR/1
 - CONTRIBUTING, templates de PR/issue e CI (GitHub Actions) nos repos frontend e backend.
 - Script `npm run lint` na pasta de orquestração.
 - `.env` ignorado no frontend.
+- Extração de `app.ts` para facilitar deploy serverless (export do app Express).
+
+### Changed
+
+- `/api/services` alinhado ao PDF: Conteúdo 3D, Realidade Virtual, Realidade Aumentada, Experiências imersivas.
+- `/api/process` etapa 03: Compartilhar → **Entregar**.
+- Copy de `/api/company` alinhado à união de tecnologia, design, narrativa e experiências imersivas.
 
 ## [1.0.0] — 2026-09 — Baseline acadêmica
 
