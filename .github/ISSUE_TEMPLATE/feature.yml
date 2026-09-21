@@ -1,0 +1,34 @@
+name: Feature
+description: Novo endpoint ou dado na API
+title: "[feat] "
+labels: ["must"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Objetivo
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contrato JSON proposto
+      description: Shape da resposta e impacto no frontend.
+    validations:
+      required: true
+  - type: input
+    id: rf
+    attributes:
+      label: IDs RF/RNF (PDF)
+      placeholder: "RF09, RNF08"
+  - type: dropdown
+    id: moscow
+    attributes:
+      label: Prioridade MoSCoW
+      options:
+        - must
+        - should
+        - could
+        - wont
+    validations:
+      required: true

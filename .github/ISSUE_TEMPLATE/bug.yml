@@ -1,0 +1,23 @@
+name: Bug
+description: Comportamento incorreto na API
+title: "[bug] "
+labels: ["must"]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento atual
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos / curl
+    validations:
+      required: true

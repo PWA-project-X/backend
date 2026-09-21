@@ -6,27 +6,27 @@ export type ServiceItem = {
 
 export const services: ServiceItem[] = [
   {
-    id: 'vr-training',
-    title: 'Treinamentos em VR',
+    id: 'conteudo-3d',
+    title: 'Conteúdo 3D',
     description:
-      'Simulações imersivas que aumentam retenção e performance, reduzindo custos de logística e deslocamento.',
+      'Modelagem, cenários e peças tridimensionais para comunicação visual, produtos digitais e ambientes imersivos.',
   },
   {
-    id: 'brand-activation',
-    title: 'Ativações de marca',
+    id: 'realidade-virtual',
+    title: 'Realidade Virtual',
     description:
-      'Experiências interativas em realidade virtual para eventos, campanhas e engajamento de público.',
+      'Experiências em VR para educação, treinamento e ativação de marca, com presença e interação em ambientes virtuais.',
   },
   {
-    id: 'immersive-education',
-    title: 'Educação imersiva',
+    id: 'realidade-aumentada',
+    title: 'Realidade Aumentada',
     description:
-      'Conteúdos e ambientes virtuais voltados ao aprendizado prático em escolas, universidades e empresas.',
+      'Camadas digitais sobre o mundo físico para demonstrações, storytelling e engajamento em pontos de contato reais.',
   },
   {
-    id: 'xr-consulting',
-    title: 'Consultoria em XR',
+    id: 'experiencias-imersivas',
+    title: 'Experiências imersivas',
     description:
-      'Apoio técnico e estratégico para projetos de realidade virtual e experiências digitais imersivas.',
+      'Jornadas que combinam 3D, RV e RA para criar narrativas memoráveis para marcas e organizações.',
   },
 ]

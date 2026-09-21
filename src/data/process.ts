@@ -11,20 +11,20 @@ export const processSteps: ProcessStepItem[] = [
     number: '01',
     title: 'Entender',
     description:
-      'Escutamos o contexto, o público e o objetivo. Definimos o que a experiência precisa comunicar e entregar.',
+      'Compreendemos a necessidade, o público e o objetivo do projeto antes de propor a solução.',
   },
   {
     id: 'criar',
     number: '02',
     title: 'Criar',
     description:
-      'Prototipamos e desenvolvemos a solução imersiva, com acompanhamento claro em cada etapa.',
+      'Desenvolvemos a solução visual, técnica e interativa, com acompanhamento claro em cada etapa.',
   },
   {
-    id: 'compartilhar',
+    id: 'entregar',
     number: '03',
-    title: 'Compartilhar',
+    title: 'Entregar',
     description:
-      'Entregamos a experiência, validamos no uso real e compartilhamos o resultado com o time e o público.',
+      'Testamos, apresentamos e disponibilizamos o resultado para o time e o público.',
   },
 ]
