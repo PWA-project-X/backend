@@ -38,13 +38,15 @@ export function clearSessionCookie(res: Response) {
   })
 }
 
-export function readUserFromRequest(req: Request): PublicUser | undefined {
+export async function readUserFromRequest(
+  req: Request,
+): Promise<PublicUser | undefined> {
   const token = req.cookies?.[COOKIE_NAME] as string | undefined
   if (!token) return undefined
 
   try {
     const payload = jwt.verify(token, getJwtSecret()) as TokenPayload
-    const user = findUserById(payload.sub)
+    const user = await findUserById(payload.sub)
     if (!user) return undefined
     return toPublicUser(user)
   } catch {
@@ -52,13 +54,21 @@ export function readUserFromRequest(req: Request): PublicUser | undefined {
   }
 }
 
-export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  req.user = readUserFromRequest(req)
+export async function optionalAuth(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
+  req.user = await readUserFromRequest(req)
   next()
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const user = readUserFromRequest(req)
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const user = await readUserFromRequest(req)
   if (!user) {
     res.status(401).json({ error: 'Não autenticado' })
     return
@@ -67,8 +77,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next()
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = readUserFromRequest(req)
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const user = await readUserFromRequest(req)
   if (!user) {
     res.status(401).json({ error: 'Não autenticado' })
     return

@@ -32,8 +32,8 @@ const router = Router()
 
 router.use(requireAdmin)
 
-router.get('/company', (_req, res) => {
-  const row = getCompany()
+router.get('/company', async (_req, res) => {
+  const row = await getCompany()
   res.json({
     name: row.name,
     project: row.project,
@@ -43,13 +43,13 @@ router.get('/company', (_req, res) => {
   })
 })
 
-router.put('/company', (req, res) => {
+router.put('/company', async (req, res) => {
   const { name, project, city, description, proposal } = req.body ?? {}
   if (!name || !project || !city || !description || !proposal) {
     res.status(400).json({ error: 'Preencha todos os campos da empresa' })
     return
   }
-  const row = updateCompany({
+  const row = await updateCompany({
     name: String(name),
     project: String(project),
     city: String(city),
@@ -65,9 +65,10 @@ router.put('/company', (req, res) => {
   })
 })
 
-router.get('/services', (_req, res) => {
+router.get('/services', async (_req, res) => {
+  const services = await listServices()
   res.json({
-    services: listServices().map(({ id, title, description }) => ({
+    services: services.map(({ id, title, description }) => ({
       id,
       title,
       description,
@@ -75,13 +76,13 @@ router.get('/services', (_req, res) => {
   })
 })
 
-router.post('/services', (req, res) => {
+router.post('/services', async (req, res) => {
   const { id, title, description } = req.body ?? {}
   if (!title || !description) {
     res.status(400).json({ error: 'Informe título e descrição' })
     return
   }
-  const row = createService({
+  const row = await createService({
     id: id ? String(id) : undefined,
     title: String(title),
     description: String(description),
@@ -93,13 +94,13 @@ router.post('/services', (req, res) => {
   })
 })
 
-router.put('/services/:id', (req, res) => {
+router.put('/services/:id', async (req, res) => {
   const { title, description } = req.body ?? {}
   if (!title || !description) {
     res.status(400).json({ error: 'Informe título e descrição' })
     return
   }
-  const row = updateService(req.params.id, {
+  const row = await updateService(req.params.id, {
     title: String(title),
     description: String(description),
   })
@@ -110,17 +111,18 @@ router.put('/services/:id', (req, res) => {
   res.json({ id: row.id, title: row.title, description: row.description })
 })
 
-router.delete('/services/:id', (req, res) => {
-  if (!deleteService(req.params.id)) {
+router.delete('/services/:id', async (req, res) => {
+  if (!(await deleteService(req.params.id))) {
     res.status(404).json({ error: 'Serviço não encontrado' })
     return
   }
   res.json({ ok: true })
 })
 
-router.get('/projects', (_req, res) => {
+router.get('/projects', async (_req, res) => {
+  const projects = await listProjects()
   res.json({
-    projects: listProjects().map(({ id, title, summary, category }) => ({
+    projects: projects.map(({ id, title, summary, category }) => ({
       id,
       title,
       summary,
@@ -129,13 +131,13 @@ router.get('/projects', (_req, res) => {
   })
 })
 
-router.post('/projects', (req, res) => {
+router.post('/projects', async (req, res) => {
   const { id, title, summary, category } = req.body ?? {}
   if (!title || !summary || !category) {
     res.status(400).json({ error: 'Informe título, resumo e categoria' })
     return
   }
-  const row = createProject({
+  const row = await createProject({
     id: id ? String(id) : undefined,
     title: String(title),
     summary: String(summary),
@@ -149,13 +151,13 @@ router.post('/projects', (req, res) => {
   })
 })
 
-router.put('/projects/:id', (req, res) => {
+router.put('/projects/:id', async (req, res) => {
   const { title, summary, category } = req.body ?? {}
   if (!title || !summary || !category) {
     res.status(400).json({ error: 'Informe título, resumo e categoria' })
     return
   }
-  const row = updateProject(req.params.id, {
+  const row = await updateProject(req.params.id, {
     title: String(title),
     summary: String(summary),
     category: String(category),
@@ -172,17 +174,18 @@ router.put('/projects/:id', (req, res) => {
   })
 })
 
-router.delete('/projects/:id', (req, res) => {
-  if (!deleteProject(req.params.id)) {
+router.delete('/projects/:id', async (req, res) => {
+  if (!(await deleteProject(req.params.id))) {
     res.status(404).json({ error: 'Projeto não encontrado' })
     return
   }
   res.json({ ok: true })
 })
 
-router.get('/process', (_req, res) => {
+router.get('/process', async (_req, res) => {
+  const steps = await listProcessSteps()
   res.json({
-    steps: listProcessSteps().map(({ id, number, title, description }) => ({
+    steps: steps.map(({ id, number, title, description }) => ({
       id,
       number,
       title,
@@ -191,13 +194,13 @@ router.get('/process', (_req, res) => {
   })
 })
 
-router.post('/process', (req, res) => {
+router.post('/process', async (req, res) => {
   const { id, number, title, description } = req.body ?? {}
   if (!number || !title || !description) {
     res.status(400).json({ error: 'Informe número, título e descrição' })
     return
   }
-  const row = createProcessStep({
+  const row = await createProcessStep({
     id: id ? String(id) : undefined,
     number: String(number),
     title: String(title),
@@ -211,13 +214,13 @@ router.post('/process', (req, res) => {
   })
 })
 
-router.put('/process/:id', (req, res) => {
+router.put('/process/:id', async (req, res) => {
   const { number, title, description } = req.body ?? {}
   if (!number || !title || !description) {
     res.status(400).json({ error: 'Informe número, título e descrição' })
     return
   }
-  const row = updateProcessStep(req.params.id, {
+  const row = await updateProcessStep(req.params.id, {
     number: String(number),
     title: String(title),
     description: String(description),
@@ -234,8 +237,8 @@ router.put('/process/:id', (req, res) => {
   })
 })
 
-router.delete('/process/:id', (req, res) => {
-  if (!deleteProcessStep(req.params.id)) {
+router.delete('/process/:id', async (req, res) => {
+  if (!(await deleteProcessStep(req.params.id))) {
     res.status(404).json({ error: 'Etapa não encontrada' })
     return
   }
@@ -262,19 +265,20 @@ function toAdminArticle(row: {
   }
 }
 
-router.get('/insights', (_req, res) => {
+router.get('/insights', async (_req, res) => {
+  const insights = await listInsights()
   res.json({
-    insights: listInsights().map(toAdminArticle),
+    insights: insights.map(toAdminArticle),
   })
 })
 
-router.post('/insights', (req, res) => {
+router.post('/insights', async (req, res) => {
   const { id, title, summary, tag, body, coverUrl } = req.body ?? {}
   if (!title || !summary || !tag || !body) {
     res.status(400).json({ error: 'Informe título, resumo, tag e texto' })
     return
   }
-  const row = createInsight({
+  const row = await createInsight({
     id: id ? String(id) : undefined,
     title: String(title),
     summary: String(summary),
@@ -285,13 +289,13 @@ router.post('/insights', (req, res) => {
   res.status(201).json(toAdminArticle(row))
 })
 
-router.put('/insights/:id', (req, res) => {
+router.put('/insights/:id', async (req, res) => {
   const { title, summary, tag, body, coverUrl } = req.body ?? {}
   if (!title || !summary || !tag || !body) {
     res.status(400).json({ error: 'Informe título, resumo, tag e texto' })
     return
   }
-  const row = updateInsight(req.params.id, {
+  const row = await updateInsight(req.params.id, {
     title: String(title),
     summary: String(summary),
     tag: String(tag),
@@ -305,19 +309,19 @@ router.put('/insights/:id', (req, res) => {
   res.json(toAdminArticle(row))
 })
 
-router.delete('/insights/:id', (req, res) => {
-  if (!deleteInsight(req.params.id)) {
+router.delete('/insights/:id', async (req, res) => {
+  if (!(await deleteInsight(req.params.id))) {
     res.status(404).json({ error: 'Insight não encontrado' })
     return
   }
   res.json({ ok: true })
 })
 
-router.get('/users', (_req, res) => {
-  res.json({ users: listUsers() })
+router.get('/users', async (_req, res) => {
+  res.json({ users: await listUsers() })
 })
 
-router.post('/users', (req, res) => {
+router.post('/users', async (req, res) => {
   const { name, email, password, role } = req.body ?? {}
   if (!name || !email || !password) {
     res.status(400).json({ error: 'Informe nome, e-mail e senha' })
@@ -325,13 +329,13 @@ router.post('/users', (req, res) => {
   }
 
   const normalizedRole: UserRole = role === 'admin' ? 'admin' : 'user'
-  if (findUserByEmail(String(email))) {
+  if (await findUserByEmail(String(email))) {
     res.status(409).json({ error: 'Já existe um usuário com este e-mail' })
     return
   }
 
   try {
-    const user = createUser({
+    const user = await createUser({
       name: String(name),
       email: String(email),
       password: String(password),
@@ -343,8 +347,8 @@ router.post('/users', (req, res) => {
   }
 })
 
-router.delete('/users/:id', (req, res) => {
-  const target = findUserById(req.params.id)
+router.delete('/users/:id', async (req, res) => {
+  const target = await findUserById(req.params.id)
   if (!target) {
     res.status(404).json({ error: 'Usuário não encontrado' })
     return
@@ -355,12 +359,12 @@ router.delete('/users/:id', (req, res) => {
     return
   }
 
-  if (target.role === 'admin' && countAdmins() <= 1) {
+  if (target.role === 'admin' && (await countAdmins()) <= 1) {
     res.status(400).json({ error: 'Não é possível remover o último admin' })
     return
   }
 
-  deleteUser(target.id)
+  await deleteUser(target.id)
   res.json({ ok: true })
 })
 

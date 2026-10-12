@@ -25,8 +25,9 @@
   },
   "homepage": "https://github.com/PWA-project-X/backend#readme",
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.3",
+    "@libsql/client": "^0.18.0",
+    "@vercel/blob": "^2.8.1",
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -35,8 +36,7 @@
     "multer": "^2.4.0"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/better-sqlite3": "^9.6.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -46,8 +46,5 @@
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   },
-  "allowScripts": {
-    "bcrypt@6.0.0": true,
-    "better-sqlite3@13.0.3": true
-  }
+  "allowScripts": {}
 }

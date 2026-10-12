@@ -23,12 +23,13 @@ function toArticle(row: {
   }
 }
 
-router.get('/', (_req, res) => {
-  res.json({ articles: listInsights().map(toArticle) })
+router.get('/', async (_req, res) => {
+  const articles = await listInsights()
+  res.json({ articles: articles.map(toArticle) })
 })
 
-router.get('/:id', (req, res) => {
-  const row = getInsight(req.params.id)
+router.get('/:id', async (req, res) => {
+  const row = await getInsight(req.params.id)
   if (!row) {
     res.status(404).json({ error: 'Artigo não encontrado' })
     return

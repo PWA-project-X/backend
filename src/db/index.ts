@@ -1,5 +1,5 @@
-import bcrypt from 'bcrypt'
-import Database from 'better-sqlite3'
+import { createClient, type Client, type InValue } from '@libsql/client'
+import bcrypt from 'bcryptjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,26 +21,56 @@ import type {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dataDir = path.resolve(__dirname, '../../data')
-const dbPath = path.join(dataDir, 'miniverso.db')
+const localDbPath = path.join(dataDir, 'miniverso.db')
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true })
+function createDbClient(): Client {
+  const remoteUrl = process.env.TURSO_DATABASE_URL?.trim()
+  const authToken = process.env.TURSO_AUTH_TOKEN?.trim()
+
+  if (remoteUrl) {
+    return createClient({
+      url: remoteUrl,
+      authToken,
+    })
+  }
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true })
+  }
+
+  return createClient({
+    url: `file:${localDbPath}`,
+  })
 }
 
-const db = new Database(dbPath)
-db.pragma('journal_mode = WAL')
-db.pragma('foreign_keys = ON')
+const db = createDbClient()
 
-function migrate() {
-  db.exec(`
+function asNumber(value: unknown): number {
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'number') return value
+  return Number(value ?? 0)
+}
+
+function firstRow<T>(rows: unknown[]): T | undefined {
+  return rows[0] as T | undefined
+}
+
+async function execute(sql: string, args: InValue[] = []) {
+  return db.execute({ sql, args })
+}
+
+async function migrate() {
+  await execute(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('user', 'admin'))
-    );
+    )
+  `)
 
+  await execute(`
     CREATE TABLE IF NOT EXISTS company (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       name TEXT NOT NULL,
@@ -48,31 +78,39 @@ function migrate() {
       city TEXT NOT NULL,
       description TEXT NOT NULL,
       proposal TEXT NOT NULL
-    );
+    )
+  `)
 
+  await execute(`
     CREATE TABLE IF NOT EXISTS services (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
-    );
+    )
+  `)
 
+  await execute(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
       category TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
-    );
+    )
+  `)
 
+  await execute(`
     CREATE TABLE IF NOT EXISTS process_steps (
       id TEXT PRIMARY KEY,
       number TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
-    );
+    )
+  `)
 
+  await execute(`
     CREATE TABLE IF NOT EXISTS insights (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -82,58 +120,57 @@ function migrate() {
       cover_url TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       sort_order INTEGER NOT NULL DEFAULT 0
-    );
+    )
   `)
 
-  const insightColumns = () =>
-    (
-      db.prepare(`PRAGMA table_info(insights)`).all() as { name: string }[]
-    ).map((col) => col.name)
+  const info = await execute(`PRAGMA table_info(insights)`)
+  const columnNames = info.rows.map((col) => String(col.name))
 
-  if (!insightColumns().includes('body')) {
+  if (!columnNames.includes('body')) {
     try {
-      db.exec(`ALTER TABLE insights ADD COLUMN body TEXT NOT NULL DEFAULT ''`)
+      await execute(
+        `ALTER TABLE insights ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
+      )
     } catch {
-      // column may already exist from a concurrent start
+      // column may already exist
     }
   }
-  if (!insightColumns().includes('cover_url')) {
+  if (!columnNames.includes('cover_url')) {
     try {
-      db.exec(
+      await execute(
         `ALTER TABLE insights ADD COLUMN cover_url TEXT NOT NULL DEFAULT ''`,
       )
     } catch {
-      // column may already exist from a concurrent start
+      // column may already exist
     }
   }
-  if (!insightColumns().includes('created_at')) {
+  if (!columnNames.includes('created_at')) {
     try {
-      db.exec(
+      await execute(
         `ALTER TABLE insights ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
       )
     } catch {
-      // column may already exist from a concurrent start
+      // column may already exist
     }
   }
 
-  db.exec(
+  await execute(
     `UPDATE insights SET created_at = datetime('now') WHERE created_at = '' OR created_at IS NULL`,
   )
 
-  const updateEmptyBody = db.prepare(
-    `UPDATE insights SET body = ? WHERE id = ? AND (body IS NULL OR body = '')`,
-  )
   for (const item of insights) {
-    updateEmptyBody.run(item.body, item.id)
+    await execute(
+      `UPDATE insights SET body = ? WHERE id = ? AND (body IS NULL OR body = '')`,
+      [item.body, item.id],
+    )
   }
 }
 
-function seedIfEmpty() {
-  const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get() as {
-    count: number
-  }
+async function seedIfEmpty() {
+  const countResult = await execute(`SELECT COUNT(*) AS count FROM users`)
+  const userCount = asNumber(countResult.rows[0]?.count)
 
-  if (userCount.count > 0) {
+  if (userCount > 0) {
     return
   }
 
@@ -145,72 +182,107 @@ function seedIfEmpty() {
   const demoPassword = process.env.DEMO_USER_PASSWORD || 'user123'
   const demoName = process.env.DEMO_USER_NAME || 'Usuário Demo'
 
-  const insertUser = db.prepare(
-    `INSERT INTO users (id, name, email, password_hash, role)
-     VALUES (@id, @name, @email, @password_hash, @role)`,
-  )
+  const statements = [
+    {
+      sql: `INSERT INTO users (id, name, email, password_hash, role)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        crypto.randomUUID(),
+        adminName,
+        adminEmail.toLowerCase(),
+        bcrypt.hashSync(adminPassword, 10),
+        'admin',
+      ] as InValue[],
+    },
+    {
+      sql: `INSERT INTO users (id, name, email, password_hash, role)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        crypto.randomUUID(),
+        demoName,
+        demoEmail.toLowerCase(),
+        bcrypt.hashSync(demoPassword, 10),
+        'user',
+      ] as InValue[],
+    },
+    {
+      sql: `INSERT INTO company (id, name, project, city, description, proposal)
+            VALUES (1, ?, ?, ?, ?, ?)`,
+      args: [
+        company.name,
+        company.project,
+        company.city,
+        company.description,
+        company.proposal,
+      ] as InValue[],
+    },
+    ...services.map((item, index) => ({
+      sql: `INSERT INTO services (id, title, description, sort_order)
+            VALUES (?, ?, ?, ?)`,
+      args: [item.id, item.title, item.description, index] as InValue[],
+    })),
+    ...projects.map((item, index) => ({
+      sql: `INSERT INTO projects (id, title, summary, category, sort_order)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        item.id,
+        item.title,
+        item.summary,
+        item.category,
+        index,
+      ] as InValue[],
+    })),
+    ...processSteps.map((item, index) => ({
+      sql: `INSERT INTO process_steps (id, number, title, description, sort_order)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        item.id,
+        item.number,
+        item.title,
+        item.description,
+        index,
+      ] as InValue[],
+    })),
+    ...insights.map((item, index) => ({
+      sql: `INSERT INTO insights (id, title, summary, tag, body, cover_url, created_at, sort_order)
+            VALUES (?, ?, ?, ?, ?, '', datetime('now'), ?)`,
+      args: [
+        item.id,
+        item.title,
+        item.summary,
+        item.tag,
+        item.body,
+        index,
+      ] as InValue[],
+    })),
+  ]
 
-  const seed = db.transaction(() => {
-    insertUser.run({
-      id: crypto.randomUUID(),
-      name: adminName,
-      email: adminEmail.toLowerCase(),
-      password_hash: bcrypt.hashSync(adminPassword, 10),
-      role: 'admin',
-    })
-
-    insertUser.run({
-      id: crypto.randomUUID(),
-      name: demoName,
-      email: demoEmail.toLowerCase(),
-      password_hash: bcrypt.hashSync(demoPassword, 10),
-      role: 'user',
-    })
-
-    db.prepare(
-      `INSERT INTO company (id, name, project, city, description, proposal)
-       VALUES (1, @name, @project, @city, @description, @proposal)`,
-    ).run(company)
-
-    const insertService = db.prepare(
-      `INSERT INTO services (id, title, description, sort_order)
-       VALUES (@id, @title, @description, @sort_order)`,
-    )
-    services.forEach((item, index) => {
-      insertService.run({ ...item, sort_order: index })
-    })
-
-    const insertProject = db.prepare(
-      `INSERT INTO projects (id, title, summary, category, sort_order)
-       VALUES (@id, @title, @summary, @category, @sort_order)`,
-    )
-    projects.forEach((item, index) => {
-      insertProject.run({ ...item, sort_order: index })
-    })
-
-    const insertStep = db.prepare(
-      `INSERT INTO process_steps (id, number, title, description, sort_order)
-       VALUES (@id, @number, @title, @description, @sort_order)`,
-    )
-    processSteps.forEach((item, index) => {
-      insertStep.run({ ...item, sort_order: index })
-    })
-
-    const insertInsight = db.prepare(
-      `INSERT INTO insights (id, title, summary, tag, body, cover_url, created_at, sort_order)
-       VALUES (@id, @title, @summary, @tag, @body, '', datetime('now'), @sort_order)`,
-    )
-    insights.forEach((item, index) => {
-      insertInsight.run({ ...item, sort_order: index })
-    })
-  })
-
-  seed()
+  await db.batch(statements, 'write')
   console.log(`Database seeded. Admin: ${adminEmail} | Demo user: ${demoEmail}`)
 }
 
-migrate()
-seedIfEmpty()
+function assertProductionSecrets() {
+  const isProd =
+    process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
+  if (isProd && !process.env.JWT_SECRET?.trim()) {
+    throw new Error(
+      'JWT_SECRET is required in production. Set it in the Vercel project env.',
+    )
+  }
+}
+
+let readyPromise: Promise<void> | null = null
+
+export async function ensureDbReady(): Promise<void> {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      assertProductionSecrets()
+      await migrate()
+      await seedIfEmpty()
+    })()
+  }
+  await readyPromise
+}
 
 export function toPublicUser(user: DbUser): PublicUser {
   return {
@@ -221,284 +293,322 @@ export function toPublicUser(user: DbUser): PublicUser {
   }
 }
 
-export function findUserByEmail(email: string): DbUser | undefined {
-  return db
-    .prepare('SELECT * FROM users WHERE email = ?')
-    .get(email.toLowerCase()) as DbUser | undefined
+export async function findUserByEmail(
+  email: string,
+): Promise<DbUser | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM users WHERE email = ?`, [
+    email.toLowerCase(),
+  ])
+  return firstRow<DbUser>(result.rows)
 }
 
-export function findUserById(id: string): DbUser | undefined {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as
-    | DbUser
-    | undefined
+export async function findUserById(id: string): Promise<DbUser | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM users WHERE id = ?`, [id])
+  return firstRow<DbUser>(result.rows)
 }
 
-export function listUsers(): PublicUser[] {
-  return db
-    .prepare(
-      `SELECT id, name, email, role FROM users ORDER BY role DESC, name ASC`,
-    )
-    .all() as PublicUser[]
+export async function listUsers(): Promise<PublicUser[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT id, name, email, role FROM users ORDER BY role DESC, name ASC`,
+  )
+  return result.rows as unknown as PublicUser[]
 }
 
-export function createUser(input: {
+export async function createUser(input: {
   name: string
   email: string
   password: string
   role: UserRole
-}): PublicUser {
+}): Promise<PublicUser> {
+  await ensureDbReady()
   const id = crypto.randomUUID()
-  db.prepare(
+  const name = input.name.trim()
+  const email = input.email.toLowerCase().trim()
+  await execute(
     `INSERT INTO users (id, name, email, password_hash, role)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.name.trim(),
-    input.email.toLowerCase().trim(),
-    bcrypt.hashSync(input.password, 10),
-    input.role,
+    [id, name, email, bcrypt.hashSync(input.password, 10), input.role],
   )
-  return {
-    id,
-    name: input.name.trim(),
-    email: input.email.toLowerCase().trim(),
-    role: input.role,
+  return { id, name, email, role: input.role }
+}
+
+export async function countAdmins(): Promise<number> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT COUNT(*) AS count FROM users WHERE role = 'admin'`,
+  )
+  return asNumber(result.rows[0]?.count)
+}
+
+export async function deleteUser(id: string): Promise<boolean> {
+  await ensureDbReady()
+  const result = await execute(`DELETE FROM users WHERE id = ?`, [id])
+  return result.rowsAffected > 0
+}
+
+export async function getCompany(): Promise<CompanyRow> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM company WHERE id = 1`)
+  const row = firstRow<CompanyRow>(result.rows)
+  if (!row) {
+    throw new Error('Company row missing — database may not be seeded')
   }
+  return row
 }
 
-export function countAdmins(): number {
-  const row = db
-    .prepare(`SELECT COUNT(*) AS count FROM users WHERE role = 'admin'`)
-    .get() as { count: number }
-  return row.count
-}
-
-export function deleteUser(id: string): boolean {
-  const result = db.prepare('DELETE FROM users WHERE id = ?').run(id)
-  return result.changes > 0
-}
-
-export function getCompany(): CompanyRow {
-  return db.prepare('SELECT * FROM company WHERE id = 1').get() as CompanyRow
-}
-
-export function updateCompany(input: {
+export async function updateCompany(input: {
   name: string
   project: string
   city: string
   description: string
   proposal: string
-}): CompanyRow {
-  db.prepare(
+}): Promise<CompanyRow> {
+  await ensureDbReady()
+  await execute(
     `UPDATE company
-     SET name = @name, project = @project, city = @city,
-         description = @description, proposal = @proposal
+     SET name = ?, project = ?, city = ?, description = ?, proposal = ?
      WHERE id = 1`,
-  ).run(input)
+    [
+      input.name,
+      input.project,
+      input.city,
+      input.description,
+      input.proposal,
+    ],
+  )
   return getCompany()
 }
 
-export function listServices(): ServiceRow[] {
-  return db
-    .prepare('SELECT * FROM services ORDER BY sort_order ASC, title ASC')
-    .all() as ServiceRow[]
+export async function listServices(): Promise<ServiceRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM services ORDER BY sort_order ASC, title ASC`,
+  )
+  return result.rows as unknown as ServiceRow[]
 }
 
-export function getService(id: string): ServiceRow | undefined {
-  return db.prepare('SELECT * FROM services WHERE id = ?').get(id) as
-    | ServiceRow
-    | undefined
+export async function getService(id: string): Promise<ServiceRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM services WHERE id = ?`, [id])
+  return firstRow<ServiceRow>(result.rows)
 }
 
-export function createService(input: {
+export async function createService(input: {
   id?: string
   title: string
   description: string
-}): ServiceRow {
+}): Promise<ServiceRow> {
+  await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
-  const max = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max FROM services')
-    .get() as { max: number }
-  db.prepare(
+  const maxResult = await execute(
+    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM services`,
+  )
+  const max = asNumber(maxResult.rows[0]?.max)
+  await execute(
     `INSERT INTO services (id, title, description, sort_order)
      VALUES (?, ?, ?, ?)`,
-  ).run(id, input.title.trim(), input.description.trim(), max.max + 1)
-  return getService(id)!
+    [id, input.title.trim(), input.description.trim(), max + 1],
+  )
+  return (await getService(id))!
 }
 
-export function updateService(
+export async function updateService(
   id: string,
   input: { title: string; description: string },
-): ServiceRow | undefined {
-  const result = db
-    .prepare(
-      `UPDATE services SET title = ?, description = ? WHERE id = ?`,
-    )
-    .run(input.title.trim(), input.description.trim(), id)
-  if (result.changes === 0) return undefined
+): Promise<ServiceRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(
+    `UPDATE services SET title = ?, description = ? WHERE id = ?`,
+    [input.title.trim(), input.description.trim(), id],
+  )
+  if (result.rowsAffected === 0) return undefined
   return getService(id)
 }
 
-export function deleteService(id: string): boolean {
-  return db.prepare('DELETE FROM services WHERE id = ?').run(id).changes > 0
+export async function deleteService(id: string): Promise<boolean> {
+  await ensureDbReady()
+  const result = await execute(`DELETE FROM services WHERE id = ?`, [id])
+  return result.rowsAffected > 0
 }
 
-export function listProjects(): ProjectRow[] {
-  return db
-    .prepare('SELECT * FROM projects ORDER BY sort_order ASC, title ASC')
-    .all() as ProjectRow[]
+export async function listProjects(): Promise<ProjectRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM projects ORDER BY sort_order ASC, title ASC`,
+  )
+  return result.rows as unknown as ProjectRow[]
 }
 
-export function getProject(id: string): ProjectRow | undefined {
-  return db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as
-    | ProjectRow
-    | undefined
+export async function getProject(id: string): Promise<ProjectRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM projects WHERE id = ?`, [id])
+  return firstRow<ProjectRow>(result.rows)
 }
 
-export function createProject(input: {
+export async function createProject(input: {
   id?: string
   title: string
   summary: string
   category: string
-}): ProjectRow {
+}): Promise<ProjectRow> {
+  await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
-  const max = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max FROM projects')
-    .get() as { max: number }
-  db.prepare(
+  const maxResult = await execute(
+    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM projects`,
+  )
+  const max = asNumber(maxResult.rows[0]?.max)
+  await execute(
     `INSERT INTO projects (id, title, summary, category, sort_order)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.title.trim(),
-    input.summary.trim(),
-    input.category.trim(),
-    max.max + 1,
+    [
+      id,
+      input.title.trim(),
+      input.summary.trim(),
+      input.category.trim(),
+      max + 1,
+    ],
   )
-  return getProject(id)!
+  return (await getProject(id))!
 }
 
-export function updateProject(
+export async function updateProject(
   id: string,
   input: { title: string; summary: string; category: string },
-): ProjectRow | undefined {
-  const result = db
-    .prepare(
-      `UPDATE projects SET title = ?, summary = ?, category = ? WHERE id = ?`,
-    )
-    .run(input.title.trim(), input.summary.trim(), input.category.trim(), id)
-  if (result.changes === 0) return undefined
+): Promise<ProjectRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(
+    `UPDATE projects SET title = ?, summary = ?, category = ? WHERE id = ?`,
+    [input.title.trim(), input.summary.trim(), input.category.trim(), id],
+  )
+  if (result.rowsAffected === 0) return undefined
   return getProject(id)
 }
 
-export function deleteProject(id: string): boolean {
-  return db.prepare('DELETE FROM projects WHERE id = ?').run(id).changes > 0
+export async function deleteProject(id: string): Promise<boolean> {
+  await ensureDbReady()
+  const result = await execute(`DELETE FROM projects WHERE id = ?`, [id])
+  return result.rowsAffected > 0
 }
 
-export function listProcessSteps(): ProcessStepRow[] {
-  return db
-    .prepare('SELECT * FROM process_steps ORDER BY sort_order ASC, number ASC')
-    .all() as ProcessStepRow[]
+export async function listProcessSteps(): Promise<ProcessStepRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM process_steps ORDER BY sort_order ASC, number ASC`,
+  )
+  return result.rows as unknown as ProcessStepRow[]
 }
 
-export function getProcessStep(id: string): ProcessStepRow | undefined {
-  return db.prepare('SELECT * FROM process_steps WHERE id = ?').get(id) as
-    | ProcessStepRow
-    | undefined
+export async function getProcessStep(
+  id: string,
+): Promise<ProcessStepRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM process_steps WHERE id = ?`, [
+    id,
+  ])
+  return firstRow<ProcessStepRow>(result.rows)
 }
 
-export function createProcessStep(input: {
+export async function createProcessStep(input: {
   id?: string
   number: string
   title: string
   description: string
-}): ProcessStepRow {
+}): Promise<ProcessStepRow> {
+  await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
-  const max = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max FROM process_steps')
-    .get() as { max: number }
-  db.prepare(
+  const maxResult = await execute(
+    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM process_steps`,
+  )
+  const max = asNumber(maxResult.rows[0]?.max)
+  await execute(
     `INSERT INTO process_steps (id, number, title, description, sort_order)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.number.trim(),
-    input.title.trim(),
-    input.description.trim(),
-    max.max + 1,
+    [
+      id,
+      input.number.trim(),
+      input.title.trim(),
+      input.description.trim(),
+      max + 1,
+    ],
   )
-  return getProcessStep(id)!
+  return (await getProcessStep(id))!
 }
 
-export function updateProcessStep(
+export async function updateProcessStep(
   id: string,
   input: { number: string; title: string; description: string },
-): ProcessStepRow | undefined {
-  const result = db
-    .prepare(
-      `UPDATE process_steps
-       SET number = ?, title = ?, description = ?
-       WHERE id = ?`,
-    )
-    .run(
+): Promise<ProcessStepRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(
+    `UPDATE process_steps
+     SET number = ?, title = ?, description = ?
+     WHERE id = ?`,
+    [
       input.number.trim(),
       input.title.trim(),
       input.description.trim(),
       id,
-    )
-  if (result.changes === 0) return undefined
+    ],
+  )
+  if (result.rowsAffected === 0) return undefined
   return getProcessStep(id)
 }
 
-export function deleteProcessStep(id: string): boolean {
-  return (
-    db.prepare('DELETE FROM process_steps WHERE id = ?').run(id).changes > 0
+export async function deleteProcessStep(id: string): Promise<boolean> {
+  await ensureDbReady()
+  const result = await execute(`DELETE FROM process_steps WHERE id = ?`, [id])
+  return result.rowsAffected > 0
+}
+
+export async function listInsights(): Promise<InsightRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM insights
+     ORDER BY datetime(created_at) DESC, title ASC`,
   )
+  return result.rows as unknown as InsightRow[]
 }
 
-export function listInsights(): InsightRow[] {
-  return db
-    .prepare(
-      `SELECT * FROM insights
-       ORDER BY datetime(created_at) DESC, title ASC`,
-    )
-    .all() as InsightRow[]
+export async function getInsight(id: string): Promise<InsightRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(`SELECT * FROM insights WHERE id = ?`, [id])
+  return firstRow<InsightRow>(result.rows)
 }
 
-export function getInsight(id: string): InsightRow | undefined {
-  return db.prepare('SELECT * FROM insights WHERE id = ?').get(id) as
-    | InsightRow
-    | undefined
-}
-
-export function createInsight(input: {
+export async function createInsight(input: {
   id?: string
   title: string
   summary: string
   tag: string
   body: string
   coverUrl?: string
-}): InsightRow {
+}): Promise<InsightRow> {
+  await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
-  const max = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max FROM insights')
-    .get() as { max: number }
-  db.prepare(
+  const maxResult = await execute(
+    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM insights`,
+  )
+  const max = asNumber(maxResult.rows[0]?.max)
+  await execute(
     `INSERT INTO insights (id, title, summary, tag, body, cover_url, created_at, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
-  ).run(
-    id,
-    input.title.trim(),
-    input.summary.trim(),
-    input.tag.trim(),
-    input.body.trim(),
-    (input.coverUrl || '').trim(),
-    max.max + 1,
+    [
+      id,
+      input.title.trim(),
+      input.summary.trim(),
+      input.tag.trim(),
+      input.body.trim(),
+      (input.coverUrl || '').trim(),
+      max + 1,
+    ],
   )
-  return getInsight(id)!
+  return (await getInsight(id))!
 }
 
-export function updateInsight(
+export async function updateInsight(
   id: string,
   input: {
     title: string
@@ -507,25 +617,27 @@ export function updateInsight(
     body: string
     coverUrl?: string
   },
-): InsightRow | undefined {
-  const result = db
-    .prepare(
-      `UPDATE insights SET title = ?, summary = ?, tag = ?, body = ?, cover_url = ? WHERE id = ?`,
-    )
-    .run(
+): Promise<InsightRow | undefined> {
+  await ensureDbReady()
+  const result = await execute(
+    `UPDATE insights SET title = ?, summary = ?, tag = ?, body = ?, cover_url = ? WHERE id = ?`,
+    [
       input.title.trim(),
       input.summary.trim(),
       input.tag.trim(),
       input.body.trim(),
       (input.coverUrl || '').trim(),
       id,
-    )
-  if (result.changes === 0) return undefined
+    ],
+  )
+  if (result.rowsAffected === 0) return undefined
   return getInsight(id)
 }
 
-export function deleteInsight(id: string): boolean {
-  return db.prepare('DELETE FROM insights WHERE id = ?').run(id).changes > 0
+export async function deleteInsight(id: string): Promise<boolean> {
+  await ensureDbReady()
+  const result = await execute(`DELETE FROM insights WHERE id = ?`, [id])
+  return result.rowsAffected > 0
 }
 
 export default db

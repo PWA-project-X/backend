@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { Router } from 'express'
 import {
   createUser,
@@ -14,7 +14,7 @@ import {
 
 const router = Router()
 
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const name = String(req.body?.name || '').trim()
   const email = String(req.body?.email || '')
     .trim()
@@ -31,13 +31,13 @@ router.post('/register', (req, res) => {
     return
   }
 
-  if (findUserByEmail(email)) {
+  if (await findUserByEmail(email)) {
     res.status(409).json({ error: 'Já existe uma conta com este e-mail' })
     return
   }
 
   try {
-    const publicUser = createUser({
+    const publicUser = await createUser({
       name,
       email,
       password,
@@ -51,7 +51,7 @@ router.post('/register', (req, res) => {
   }
 })
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '')
     .trim()
     .toLowerCase()
@@ -62,7 +62,7 @@ router.post('/login', (req, res) => {
     return
   }
 
-  const user = findUserByEmail(email)
+  const user = await findUserByEmail(email)
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     res.status(401).json({ error: 'E-mail ou senha inválidos' })
     return
