@@ -28,14 +28,15 @@ Crie branches a partir de `main`:
 ### Definition of Ready
 
 - Issue ou objetivo claro.
-- Sem banco/auth/admin na v1 (RNF07 / fora do escopo).
+- Escopo atual inclui SQLite, auth, cadastro livre (`/api/auth/register`) e admin (ADR 0004). Persistência serverless continua fora.
 
 ### Definition of Done
 
 - [ ] `npm run build` passa
 - [ ] Endpoints afetados testados (curl ou browser)
 - [ ] Contrato no README atualizado se o shape JSON mudou
-- [ ] Dados em `src/data/` coerentes com o fallback do frontend quando o conteúdo mudar
+- [ ] Seed/`src/data/` coerentes com o fallback do frontend quando o conteúdo de demonstração mudar
+- [ ] Rotas admin/auth protegidas e testadas com cookie de sessão
 
 ## Ambiente local
 

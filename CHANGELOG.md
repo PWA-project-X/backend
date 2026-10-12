@@ -13,9 +13,12 @@ O formato segue a ideia de [Keep a Changelog](https://keepachangelog.com/pt-BR/1
 - Script `npm run lint` na pasta de orquestração.
 - `.env` ignorado no frontend.
 - Extração de `app.ts` para facilitar deploy serverless (export do app Express).
+- SQLite (`data/miniverso.db`), seed, auth (JWT cookie) e rotas `/api/admin/*` (ADR 0004).
+- `GET /api/insights`.
 
 ### Changed
 
+- Leituras públicas passam a ler o SQLite; RNF07 superseded nesta fatia.
 - `/api/services` alinhado ao PDF: Conteúdo 3D, Realidade Virtual, Realidade Aumentada, Experiências imersivas.
 - `/api/process` etapa 03: Compartilhar → **Entregar**.
 - Copy de `/api/company` alinhado à união de tecnologia, design, narrativa e experiências imersivas.
