@@ -32,6 +32,10 @@ export type ProjectRow = {
   title: string
   summary: string
   category: string
+  description: string
+  cover_url: string
+  technologies: string
+  featured: number
   sort_order: number
 }
 

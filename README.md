@@ -32,7 +32,8 @@ A API sobe em `http://localhost:3001` (porta configurável via `PORT`).
 | `GET` | `/api/company` | Informações gerais (`name`, `project`, `city`, `description`, `proposal`) |
 | `GET` | `/api/services` | `{ "services": [{ "id", "title", "description" }] }` |
 | `GET` | `/api/process` | `{ "steps": [{ "id", "number", "title", "description" }] }` |
-| `GET` | `/api/projects` | `{ "projects": [{ "id", "title", "summary", "category" }] }` |
+| `GET` | `/api/projects` | `{ "projects": [{ "id", "title", "summary", "category", "description", "coverUrl", "technologies", "featured", "sortOrder" }] }` — apenas destaques, no máximo 6 |
+| `GET` | `/api/projects/:id` | Um projeto em destaque, ou 404 |
 | `GET` | `/api/insights` | `{ "insights": [{ "id", "title", "summary", "tag" }] }` |
 | `POST` | `/api/auth/register` | Cadastro livre (papel `user`) + cookie |
 | `POST` | `/api/auth/login` | Cookie de sessão + `{ "user" }` |

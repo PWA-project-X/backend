@@ -96,6 +96,10 @@ async function migrate() {
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
       category TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      cover_url TEXT NOT NULL DEFAULT '',
+      technologies TEXT NOT NULL DEFAULT '[]',
+      featured INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0
     )
   `)
@@ -123,10 +127,10 @@ async function migrate() {
     )
   `)
 
-  const info = await execute(`PRAGMA table_info(insights)`)
-  const columnNames = info.rows.map((col) => String(col.name))
+  const insightsInfo = await execute(`PRAGMA table_info(insights)`)
+  const insightColumns = insightsInfo.rows.map((col) => String(col.name))
 
-  if (!columnNames.includes('body')) {
+  if (!insightColumns.includes('body')) {
     try {
       await execute(
         `ALTER TABLE insights ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
@@ -135,7 +139,7 @@ async function migrate() {
       // column may already exist
     }
   }
-  if (!columnNames.includes('cover_url')) {
+  if (!insightColumns.includes('cover_url')) {
     try {
       await execute(
         `ALTER TABLE insights ADD COLUMN cover_url TEXT NOT NULL DEFAULT ''`,
@@ -144,7 +148,7 @@ async function migrate() {
       // column may already exist
     }
   }
-  if (!columnNames.includes('created_at')) {
+  if (!insightColumns.includes('created_at')) {
     try {
       await execute(
         `ALTER TABLE insights ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
@@ -163,6 +167,71 @@ async function migrate() {
       `UPDATE insights SET body = ? WHERE id = ? AND (body IS NULL OR body = '')`,
       [item.body, item.id],
     )
+  }
+
+  const projectsInfo = await execute(`PRAGMA table_info(projects)`)
+  const projectColumns = projectsInfo.rows.map((col) => String(col.name))
+
+  if (!projectColumns.includes('description')) {
+    try {
+      await execute(
+        `ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
+  if (!projectColumns.includes('cover_url')) {
+    try {
+      await execute(
+        `ALTER TABLE projects ADD COLUMN cover_url TEXT NOT NULL DEFAULT ''`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
+  if (!projectColumns.includes('technologies')) {
+    try {
+      await execute(
+        `ALTER TABLE projects ADD COLUMN technologies TEXT NOT NULL DEFAULT '[]'`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
+  if (!projectColumns.includes('featured')) {
+    try {
+      await execute(
+        `ALTER TABLE projects ADD COLUMN featured INTEGER NOT NULL DEFAULT 0`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
+
+  for (const item of projects) {
+    await execute(
+      `UPDATE projects
+       SET description = ?,
+           technologies = ?,
+           featured = ?
+       WHERE id = ?
+         AND (description IS NULL OR description = '')`,
+      [
+        item.description,
+        JSON.stringify(item.technologies),
+        item.featured ? 1 : 0,
+        item.id,
+      ],
+    )
+  }
+
+  const minSortResult = await execute(
+    `SELECT MIN(sort_order) AS min FROM projects`,
+  )
+  const minSort = minSortResult.rows[0]?.min
+  if (minSort !== null && minSort !== undefined && asNumber(minSort) === 0) {
+    await execute(`UPDATE projects SET sort_order = sort_order + 1`)
   }
 }
 
@@ -222,14 +291,19 @@ async function seedIfEmpty() {
       args: [item.id, item.title, item.description, index] as InValue[],
     })),
     ...projects.map((item, index) => ({
-      sql: `INSERT INTO projects (id, title, summary, category, sort_order)
-            VALUES (?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO projects (
+              id, title, summary, category, description, cover_url,
+              technologies, featured, sort_order
+            ) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`,
       args: [
         item.id,
         item.title,
         item.summary,
         item.category,
-        index,
+        item.description,
+        JSON.stringify(item.technologies),
+        item.featured ? 1 : 0,
+        index + 1,
       ] as InValue[],
     })),
     ...processSteps.map((item, index) => ({
@@ -434,12 +508,56 @@ export async function deleteService(id: string): Promise<boolean> {
   return result.rowsAffected > 0
 }
 
+export function parseTechnologies(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+  } catch {
+    return raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+}
+
+export function serializeTechnologies(items: string[]): string {
+  return JSON.stringify(
+    items.map((item) => item.trim()).filter(Boolean),
+  )
+}
+
 export async function listProjects(): Promise<ProjectRow[]> {
   await ensureDbReady()
   const result = await execute(
     `SELECT * FROM projects ORDER BY sort_order ASC, title ASC`,
   )
   return result.rows as unknown as ProjectRow[]
+}
+
+export async function listFeaturedProjects(
+  limit = 6,
+): Promise<ProjectRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM projects
+     WHERE featured = 1
+     ORDER BY sort_order ASC, title ASC
+     LIMIT ?`,
+    [limit],
+  )
+  return result.rows as unknown as ProjectRow[]
+}
+
+export async function countFeaturedProjects(): Promise<number> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT COUNT(*) AS count FROM projects WHERE featured = 1`,
+  )
+  return asNumber(result.rows[0]?.count)
 }
 
 export async function getProject(id: string): Promise<ProjectRow | undefined> {
@@ -453,22 +571,37 @@ export async function createProject(input: {
   title: string
   summary: string
   category: string
+  description: string
+  coverUrl?: string
+  technologies?: string[]
+  featured?: boolean
+  sortOrder?: number
 }): Promise<ProjectRow> {
   await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
   const maxResult = await execute(
-    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM projects`,
+    `SELECT COALESCE(MAX(sort_order), 0) AS max FROM projects`,
   )
   const max = asNumber(maxResult.rows[0]?.max)
+  const sortOrder =
+    typeof input.sortOrder === 'number' && Number.isFinite(input.sortOrder)
+      ? Math.max(1, Math.floor(input.sortOrder))
+      : Math.max(1, max + 1)
   await execute(
-    `INSERT INTO projects (id, title, summary, category, sort_order)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO projects (
+       id, title, summary, category, description, cover_url,
+       technologies, featured, sort_order
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.title.trim(),
       input.summary.trim(),
       input.category.trim(),
-      max + 1,
+      input.description.trim(),
+      (input.coverUrl || '').trim(),
+      serializeTechnologies(input.technologies || []),
+      input.featured ? 1 : 0,
+      sortOrder,
     ],
   )
   return (await getProject(id))!
@@ -476,12 +609,42 @@ export async function createProject(input: {
 
 export async function updateProject(
   id: string,
-  input: { title: string; summary: string; category: string },
+  input: {
+    title: string
+    summary: string
+    category: string
+    description: string
+    coverUrl?: string
+    technologies?: string[]
+    featured?: boolean
+    sortOrder?: number
+  },
 ): Promise<ProjectRow | undefined> {
   await ensureDbReady()
+  const current = await getProject(id)
+  if (!current) return undefined
+
+  const sortOrder =
+    typeof input.sortOrder === 'number' && Number.isFinite(input.sortOrder)
+      ? Math.max(1, Math.floor(input.sortOrder))
+      : Math.max(1, current.sort_order)
+
   const result = await execute(
-    `UPDATE projects SET title = ?, summary = ?, category = ? WHERE id = ?`,
-    [input.title.trim(), input.summary.trim(), input.category.trim(), id],
+    `UPDATE projects
+     SET title = ?, summary = ?, category = ?, description = ?,
+         cover_url = ?, technologies = ?, featured = ?, sort_order = ?
+     WHERE id = ?`,
+    [
+      input.title.trim(),
+      input.summary.trim(),
+      input.category.trim(),
+      input.description.trim(),
+      (input.coverUrl || '').trim(),
+      serializeTechnologies(input.technologies || []),
+      input.featured ? 1 : 0,
+      sortOrder,
+      id,
+    ],
   )
   if (result.rowsAffected === 0) return undefined
   return getProject(id)
