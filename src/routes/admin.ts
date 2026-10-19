@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import {
   countAdmins,
+  countFeaturedProjects,
   createInsight,
   createProcessStep,
   createProject,
@@ -14,11 +15,13 @@ import {
   findUserByEmail,
   findUserById,
   getCompany,
+  getProject,
   listInsights,
   listProcessSteps,
   listProjects,
   listServices,
   listUsers,
+  parseTechnologies,
   updateCompany,
   updateInsight,
   updateProcessStep,
@@ -119,62 +122,171 @@ router.delete('/services/:id', async (req, res) => {
   res.json({ ok: true })
 })
 
+function toAdminProject(row: {
+  id: string
+  title: string
+  summary: string
+  category: string
+  description: string
+  cover_url: string
+  technologies: string
+  featured: number
+  sort_order: number
+}) {
+  return {
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    category: row.category,
+    description: row.description || '',
+    coverUrl: row.cover_url || '',
+    technologies: parseTechnologies(row.technologies),
+    featured: Boolean(row.featured),
+    sortOrder: row.sort_order,
+  }
+}
+
+function parseTechInput(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
 router.get('/projects', async (_req, res) => {
   const projects = await listProjects()
   res.json({
-    projects: projects.map(({ id, title, summary, category }) => ({
-      id,
-      title,
-      summary,
-      category,
-    })),
+    projects: projects.map(toAdminProject),
   })
 })
 
 router.post('/projects', async (req, res) => {
-  const { id, title, summary, category } = req.body ?? {}
-  if (!title || !summary || !category) {
-    res.status(400).json({ error: 'Informe título, resumo e categoria' })
+  const {
+    id,
+    title,
+    summary,
+    category,
+    description,
+    coverUrl,
+    technologies,
+    featured,
+    sortOrder,
+  } = req.body ?? {}
+  if (!title || !summary || !category || !description) {
+    res
+      .status(400)
+      .json({ error: 'Informe título, resumo, categoria e descrição' })
     return
   }
+
+  const wantFeatured = Boolean(featured)
+  if (wantFeatured && (await countFeaturedProjects()) >= 6) {
+    res.status(400).json({
+      error: 'Já existem 6 projetos em destaque. Remova um antes de adicionar.',
+    })
+    return
+  }
+
   const row = await createProject({
     id: id ? String(id) : undefined,
     title: String(title),
     summary: String(summary),
     category: String(category),
+    description: String(description),
+    coverUrl: coverUrl ? String(coverUrl) : '',
+    technologies: parseTechInput(technologies),
+    featured: wantFeatured,
+    sortOrder:
+      sortOrder === undefined || sortOrder === null || sortOrder === ''
+        ? undefined
+        : Number(sortOrder),
   })
-  res.status(201).json({
-    id: row.id,
-    title: row.title,
-    summary: row.summary,
-    category: row.category,
-  })
+  res.status(201).json(toAdminProject(row))
 })
 
 router.put('/projects/:id', async (req, res) => {
-  const { title, summary, category } = req.body ?? {}
-  if (!title || !summary || !category) {
-    res.status(400).json({ error: 'Informe título, resumo e categoria' })
+  const {
+    title,
+    summary,
+    category,
+    description,
+    coverUrl,
+    technologies,
+    featured,
+    sortOrder,
+  } = req.body ?? {}
+  if (!title || !summary || !category || !description) {
+    res
+      .status(400)
+      .json({ error: 'Informe título, resumo, categoria e descrição' })
     return
   }
+
+  const current = await getProject(req.params.id)
+  if (!current) {
+    res.status(404).json({ error: 'Projeto não encontrado' })
+    return
+  }
+
+  const wantFeatured = Boolean(featured)
+  const wasFeatured = Boolean(current.featured)
+  const featuredCount = await countFeaturedProjects()
+
+  if (wantFeatured && !wasFeatured && featuredCount >= 6) {
+    res.status(400).json({
+      error: 'Já existem 6 projetos em destaque. Remova um antes de adicionar.',
+    })
+    return
+  }
+
+  if (!wantFeatured && wasFeatured && featuredCount <= 3) {
+    res.status(400).json({
+      error: 'Mantenha pelo menos 3 projetos em destaque na página principal.',
+    })
+    return
+  }
+
   const row = await updateProject(req.params.id, {
     title: String(title),
     summary: String(summary),
     category: String(category),
+    description: String(description),
+    coverUrl: coverUrl ? String(coverUrl) : '',
+    technologies: parseTechInput(technologies),
+    featured: wantFeatured,
+    sortOrder:
+      sortOrder === undefined || sortOrder === null || sortOrder === ''
+        ? undefined
+        : Number(sortOrder),
   })
   if (!row) {
     res.status(404).json({ error: 'Projeto não encontrado' })
     return
   }
-  res.json({
-    id: row.id,
-    title: row.title,
-    summary: row.summary,
-    category: row.category,
-  })
+  res.json(toAdminProject(row))
 })
 
 router.delete('/projects/:id', async (req, res) => {
+  const current = await getProject(req.params.id)
+  if (!current) {
+    res.status(404).json({ error: 'Projeto não encontrado' })
+    return
+  }
+
+  if (current.featured && (await countFeaturedProjects()) <= 3) {
+    res.status(400).json({
+      error:
+        'Não é possível excluir: mantenha pelo menos 3 projetos em destaque.',
+    })
+    return
+  }
+
   if (!(await deleteProject(req.params.id))) {
     res.status(404).json({ error: 'Projeto não encontrado' })
     return

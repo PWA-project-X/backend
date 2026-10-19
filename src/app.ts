@@ -3,10 +3,12 @@ import cors from 'cors'
 import express from 'express'
 import {
   getCompany,
+  getProject,
+  listFeaturedProjects,
   listInsights,
   listProcessSteps,
-  listProjects,
   listServices,
+  parseTechnologies,
 } from './db/index.js'
 import adminRouter from './routes/admin.js'
 import articlesRouter from './routes/articles.js'
@@ -103,16 +105,44 @@ app.get('/api/process', async (_req, res) => {
   })
 })
 
+function toPublicProject(row: {
+  id: string
+  title: string
+  summary: string
+  category: string
+  description: string
+  cover_url: string
+  technologies: string
+  featured: number
+  sort_order: number
+}) {
+  return {
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    category: row.category,
+    description: row.description,
+    coverUrl: row.cover_url || '',
+    technologies: parseTechnologies(row.technologies),
+    featured: Boolean(row.featured),
+    sortOrder: row.sort_order,
+  }
+}
+
 app.get('/api/projects', async (_req, res) => {
-  const projects = await listProjects()
+  const projects = await listFeaturedProjects(6)
   res.json({
-    projects: projects.map(({ id, title, summary, category }) => ({
-      id,
-      title,
-      summary,
-      category,
-    })),
+    projects: projects.map(toPublicProject),
   })
+})
+
+app.get('/api/projects/:id', async (req, res) => {
+  const project = await getProject(req.params.id)
+  if (!project || !project.featured) {
+    res.status(404).json({ error: 'Projeto não encontrado' })
+    return
+  }
+  res.json(toPublicProject(project))
 })
 
 app.get('/api/insights', async (_req, res) => {
