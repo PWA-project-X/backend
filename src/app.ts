@@ -5,7 +5,7 @@ import {
   getCompany,
   getProject,
   listFeaturedProjects,
-  listInsights,
+  listHomeInsights,
   listProcessSteps,
   listServices,
   parseTechnologies,
@@ -146,7 +146,7 @@ app.get('/api/projects/:id', async (req, res) => {
 })
 
 app.get('/api/insights', async (_req, res) => {
-  const insights = await listInsights()
+  const insights = await listHomeInsights(6)
   res.json({
     insights: insights.map(({ id, title, summary, tag, cover_url }) => ({
       id,

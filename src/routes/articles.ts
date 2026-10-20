@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getInsight, listInsights } from '../db/index.js'
+import { getInsight, listPublicInsights } from '../db/index.js'
 
 const router = Router()
 
@@ -24,13 +24,13 @@ function toArticle(row: {
 }
 
 router.get('/', async (_req, res) => {
-  const articles = await listInsights()
+  const articles = await listPublicInsights()
   res.json({ articles: articles.map(toArticle) })
 })
 
 router.get('/:id', async (req, res) => {
   const row = await getInsight(req.params.id)
-  if (!row) {
+  if (!row || row.archived) {
     res.status(404).json({ error: 'Artigo não encontrado' })
     return
   }
