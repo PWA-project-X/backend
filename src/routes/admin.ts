@@ -22,8 +22,10 @@ import {
   listServices,
   listUsers,
   parseTechnologies,
+  reorderHomeInsights,
   updateCompany,
   updateInsight,
+  updateInsightPlacement,
   updateProcessStep,
   updateProject,
   updateService,
@@ -365,6 +367,9 @@ function toAdminArticle(row: {
   body: string
   cover_url: string
   created_at: string
+  sort_order: number
+  show_on_home: number
+  archived: number
 }) {
   return {
     id: row.id,
@@ -374,6 +379,9 @@ function toAdminArticle(row: {
     body: row.body,
     coverUrl: row.cover_url || '',
     createdAt: row.created_at,
+    sortOrder: row.sort_order,
+    showOnHome: Boolean(row.show_on_home),
+    archived: Boolean(row.archived),
   }
 }
 
@@ -382,6 +390,22 @@ router.get('/insights', async (_req, res) => {
   res.json({
     insights: insights.map(toAdminArticle),
   })
+})
+
+router.put('/insights/home-order', async (req, res) => {
+  const { ids } = req.body ?? {}
+  if (!Array.isArray(ids)) {
+    res.status(400).json({ error: 'Informe a lista de ids na ordem desejada' })
+    return
+  }
+  try {
+    const home = await reorderHomeInsights(ids.map((id) => String(id)))
+    res.json({ insights: home.map(toAdminArticle) })
+  } catch (err) {
+    res.status(400).json({
+      error: err instanceof Error ? err.message : 'Falha ao reordenar',
+    })
+  }
 })
 
 router.post('/insights', async (req, res) => {
@@ -399,6 +423,31 @@ router.post('/insights', async (req, res) => {
     coverUrl: coverUrl ? String(coverUrl) : '',
   })
   res.status(201).json(toAdminArticle(row))
+})
+
+router.put('/insights/:id/placement', async (req, res) => {
+  const { showOnHome, archived } = req.body ?? {}
+  if (typeof showOnHome !== 'boolean' && typeof archived !== 'boolean') {
+    res
+      .status(400)
+      .json({ error: 'Informe showOnHome e/ou archived' })
+    return
+  }
+  try {
+    const row = await updateInsightPlacement(req.params.id, {
+      showOnHome: typeof showOnHome === 'boolean' ? showOnHome : undefined,
+      archived: typeof archived === 'boolean' ? archived : undefined,
+    })
+    if (!row) {
+      res.status(404).json({ error: 'Insight não encontrado' })
+      return
+    }
+    res.json(toAdminArticle(row))
+  } catch (err) {
+    res.status(400).json({
+      error: err instanceof Error ? err.message : 'Falha ao atualizar',
+    })
+  }
 })
 
 router.put('/insights/:id', async (req, res) => {

@@ -56,6 +56,8 @@ export type InsightRow = {
   cover_url: string
   created_at: string
   sort_order: number
+  show_on_home: number
+  archived: number
 }
 
 declare global {

@@ -123,7 +123,9 @@ async function migrate() {
       body TEXT NOT NULL DEFAULT '',
       cover_url TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      sort_order INTEGER NOT NULL DEFAULT 0
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      show_on_home INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0
     )
   `)
 
@@ -157,6 +159,25 @@ async function migrate() {
       // column may already exist
     }
   }
+  const addedShowOnHome = !insightColumns.includes('show_on_home')
+  if (addedShowOnHome) {
+    try {
+      await execute(
+        `ALTER TABLE insights ADD COLUMN show_on_home INTEGER NOT NULL DEFAULT 0`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
+  if (!insightColumns.includes('archived')) {
+    try {
+      await execute(
+        `ALTER TABLE insights ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
 
   await execute(
     `UPDATE insights SET created_at = datetime('now') WHERE created_at = '' OR created_at IS NULL`,
@@ -167,6 +188,22 @@ async function migrate() {
       `UPDATE insights SET body = ? WHERE id = ? AND (body IS NULL OR body = '')`,
       [item.body, item.id],
     )
+  }
+
+  if (addedShowOnHome) {
+    const homeCandidates = await execute(
+      `SELECT id FROM insights
+       WHERE archived = 0
+       ORDER BY datetime(created_at) DESC, title ASC`,
+    )
+    let order = 1
+    for (const row of homeCandidates.rows) {
+      await execute(
+        `UPDATE insights SET show_on_home = 1, sort_order = ? WHERE id = ?`,
+        [order, String(row.id)],
+      )
+      order += 1
+    }
   }
 
   const projectsInfo = await execute(`PRAGMA table_info(projects)`)
@@ -318,15 +355,17 @@ async function seedIfEmpty() {
       ] as InValue[],
     })),
     ...insights.map((item, index) => ({
-      sql: `INSERT INTO insights (id, title, summary, tag, body, cover_url, created_at, sort_order)
-            VALUES (?, ?, ?, ?, ?, '', datetime('now'), ?)`,
+      sql: `INSERT INTO insights (
+              id, title, summary, tag, body, cover_url, created_at,
+              sort_order, show_on_home, archived
+            ) VALUES (?, ?, ?, ?, ?, '', datetime('now'), ?, 1, 0)`,
       args: [
         item.id,
         item.title,
         item.summary,
         item.tag,
         item.body,
-        index,
+        index + 1,
       ] as InValue[],
     })),
   ]
@@ -730,9 +769,43 @@ export async function listInsights(): Promise<InsightRow[]> {
   await ensureDbReady()
   const result = await execute(
     `SELECT * FROM insights
+     ORDER BY archived ASC,
+              CASE WHEN show_on_home = 1 THEN sort_order ELSE 2147483647 END ASC,
+              datetime(created_at) DESC,
+              title ASC`,
+  )
+  return result.rows as unknown as InsightRow[]
+}
+
+export async function listHomeInsights(limit = 6): Promise<InsightRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM insights
+     WHERE show_on_home = 1 AND archived = 0
+     ORDER BY sort_order ASC, datetime(created_at) DESC, title ASC
+     LIMIT ?`,
+    [limit],
+  )
+  return result.rows as unknown as InsightRow[]
+}
+
+export async function listPublicInsights(): Promise<InsightRow[]> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT * FROM insights
+     WHERE archived = 0
      ORDER BY datetime(created_at) DESC, title ASC`,
   )
   return result.rows as unknown as InsightRow[]
+}
+
+export async function countHomeInsights(): Promise<number> {
+  await ensureDbReady()
+  const result = await execute(
+    `SELECT COUNT(*) AS count FROM insights
+     WHERE show_on_home = 1 AND archived = 0`,
+  )
+  return asNumber(result.rows[0]?.count)
 }
 
 export async function getInsight(id: string): Promise<InsightRow | undefined> {
@@ -751,13 +824,11 @@ export async function createInsight(input: {
 }): Promise<InsightRow> {
   await ensureDbReady()
   const id = input.id?.trim() || crypto.randomUUID()
-  const maxResult = await execute(
-    `SELECT COALESCE(MAX(sort_order), -1) AS max FROM insights`,
-  )
-  const max = asNumber(maxResult.rows[0]?.max)
   await execute(
-    `INSERT INTO insights (id, title, summary, tag, body, cover_url, created_at, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
+    `INSERT INTO insights (
+       id, title, summary, tag, body, cover_url, created_at,
+       sort_order, show_on_home, archived
+     ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 0)`,
     [
       id,
       input.title.trim(),
@@ -765,7 +836,6 @@ export async function createInsight(input: {
       input.tag.trim(),
       input.body.trim(),
       (input.coverUrl || '').trim(),
-      max + 1,
     ],
   )
   return (await getInsight(id))!
@@ -795,6 +865,84 @@ export async function updateInsight(
   )
   if (result.rowsAffected === 0) return undefined
   return getInsight(id)
+}
+
+export async function updateInsightPlacement(
+  id: string,
+  input: { showOnHome?: boolean; archived?: boolean },
+): Promise<InsightRow | undefined> {
+  await ensureDbReady()
+  const current = await getInsight(id)
+  if (!current) return undefined
+
+  let archived = Boolean(current.archived)
+  let showOnHome = Boolean(current.show_on_home)
+  let sortOrder = current.sort_order
+
+  if (typeof input.archived === 'boolean') {
+    archived = input.archived
+  }
+
+  // Archive and restore both leave the article off the home — the admin must
+  // opt in again with “Na home” after restoring.
+  if (archived || Boolean(current.archived)) {
+    showOnHome = false
+    sortOrder = 0
+  } else if (typeof input.showOnHome === 'boolean') {
+    if (input.showOnHome && !showOnHome) {
+      if ((await countHomeInsights()) >= 6) {
+        throw new Error(
+          'Já existem 6 artigos na home. Remova um antes de adicionar.',
+        )
+      }
+      const maxResult = await execute(
+        `SELECT COALESCE(MAX(sort_order), 0) AS max FROM insights
+         WHERE show_on_home = 1 AND archived = 0`,
+      )
+      sortOrder = asNumber(maxResult.rows[0]?.max) + 1
+      showOnHome = true
+    } else if (!input.showOnHome && showOnHome) {
+      showOnHome = false
+      sortOrder = 0
+    }
+  }
+
+  await execute(
+    `UPDATE insights
+     SET show_on_home = ?, archived = ?, sort_order = ?
+     WHERE id = ?`,
+    [showOnHome ? 1 : 0, archived ? 1 : 0, sortOrder, id],
+  )
+  return getInsight(id)
+}
+
+export async function reorderHomeInsights(
+  ids: string[],
+): Promise<InsightRow[]> {
+  await ensureDbReady()
+  const home = await listHomeInsights(100)
+  const homeIds = new Set(home.map((row) => row.id))
+  const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+
+  if (
+    uniqueIds.length !== home.length ||
+    uniqueIds.some((id) => !homeIds.has(id))
+  ) {
+    throw new Error(
+      'A ordem deve incluir exatamente os artigos atualmente na home.',
+    )
+  }
+
+  let order = 1
+  for (const id of uniqueIds) {
+    await execute(
+      `UPDATE insights SET sort_order = ? WHERE id = ? AND show_on_home = 1 AND archived = 0`,
+      [order, id],
+    )
+    order += 1
+  }
+
+  return listHomeInsights(100)
 }
 
 export async function deleteInsight(id: string): Promise<boolean> {
