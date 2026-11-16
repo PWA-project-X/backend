@@ -188,7 +188,60 @@ async function migrate() {
       `UPDATE insights SET body = ? WHERE id = ? AND (body IS NULL OR body = '')`,
       [item.body, item.id],
     )
+    // Enrich seeded articles that still lack a cover (do not overwrite admin covers).
+    if (item.coverUrl) {
+      await execute(
+        `UPDATE insights
+         SET body = ?, cover_url = ?
+         WHERE id = ?
+           AND (cover_url IS NULL OR cover_url = '')`,
+        [item.body, item.coverUrl, item.id],
+      )
+    }
   }
+
+  // Upgrade the demo rich-editor article if it still has the stub summary/cover.
+  const immersiveMediaBody = `<p>Experiências imersivas ganham força quando texto, imagem e vídeo trabalham juntos — não como anexos soltos, mas como uma narrativa contínua. No portfólio da Miniverso, o editor rico existe para contar esses projetos com a mesma densidade da experiência que descreve.</p>
+<h2>Mais do que um post com mídia</h2>
+<p>Um artigo sobre realidade virtual precisa <strong>mostrar</strong> presença: o headset no rosto, o gesto no ar, o ambiente que envolve. Combinar tipografia clara, figuras legendadas e vídeo embutido aproxima o leitor do que a equipe construiu em Unity, Unreal ou WebXR.</p>
+<figure>
+<img src="/media/articles/immersive-media-body.jpg" alt="Público em evento com telão e narrativa visual" width="1600" />
+<figcaption>Mídia em contexto — o público absorve a história no mesmo ritmo da cena. Foto via Unsplash.</figcaption>
+</figure>
+<h2>O que entra no pacote</h2>
+<ul>
+<li>Texto estruturado com seções curtas e ênfase onde importa.</li>
+<li>Imagens de capa e de apoio alinhadas ao tema da experiência.</li>
+<li>Vídeo para demonstrar movimento, áudio espacial e interação.</li>
+<li>Publicação no blog do portfólio, aberta para leitura sem conta.</li>
+</ul>
+<h2>Do editor ao portfólio</h2>
+<p>No painel admin, o time monta o artigo com o editor visual: formatação, upload de imagens e incorporação de vídeo. Na frente, o visitante vê capa, resumo e corpo sanitizado — pronto para celular, desktop ou PWA instalada.</p>
+<h2>Por que isso importa na RV</h2>
+<p>Realidade virtual é difícil de explicar só com parágrafo. Quando a mídia acompanha o texto, o leitor entende escala, ritmo e intenção da ativação ou do treinamento. O artigo deixa de ser documentação e passa a ser extensão da experiência.</p>
+<blockquote><p>Uma boa peça de conteúdo imersivo não compete com o headset — ela prepara o público para entrar nele.</p></blockquote>
+<p>Este artigo é o modelo: capa forte, seções claras e mídia no lugar certo. Use-o como referência ao publicar novos cases de RV, RA e conteúdo 3D no blog da Miniverso.</p>`
+  await execute(
+    `UPDATE insights
+     SET title = ?,
+         summary = ?,
+         tag = ?,
+         body = ?,
+         cover_url = ?
+     WHERE id = ?
+       AND (
+         summary = 'Demonstração do editor rico com texto, imagem e vídeo.'
+         OR cover_url LIKE '/uploads/0b2a0bc8-af9e-4aaa-ab3b-ac324b56a3bf.png'
+       )`,
+    [
+      'Experiência imersiva com mídia',
+      'Como texto, imagem e vídeo contam juntos uma narrativa de realidade virtual — do editor ao blog do portfólio.',
+      'Realidade Virtual',
+      immersiveMediaBody,
+      '/media/articles/immersive-media-cover.jpg',
+      '5829c4f9-0d05-4d7d-b1a0-1e2479752f33',
+    ],
+  )
 
   if (addedShowOnHome) {
     const homeCandidates = await execute(
@@ -261,6 +314,25 @@ async function migrate() {
         item.id,
       ],
     )
+    // Enrich seeded projects that still lack a cover (do not overwrite admin covers).
+    if (item.coverUrl) {
+      await execute(
+        `UPDATE projects
+         SET description = ?,
+             cover_url = ?,
+             technologies = ?,
+             featured = ?
+         WHERE id = ?
+           AND (cover_url IS NULL OR cover_url = '')`,
+        [
+          item.description,
+          item.coverUrl,
+          JSON.stringify(item.technologies),
+          item.featured ? 1 : 0,
+          item.id,
+        ],
+      )
+    }
   }
 
   const minSortResult = await execute(
@@ -331,13 +403,14 @@ async function seedIfEmpty() {
       sql: `INSERT INTO projects (
               id, title, summary, category, description, cover_url,
               technologies, featured, sort_order
-            ) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         item.id,
         item.title,
         item.summary,
         item.category,
         item.description,
+        item.coverUrl || '',
         JSON.stringify(item.technologies),
         item.featured ? 1 : 0,
         index + 1,
@@ -358,13 +431,14 @@ async function seedIfEmpty() {
       sql: `INSERT INTO insights (
               id, title, summary, tag, body, cover_url, created_at,
               sort_order, show_on_home, archived
-            ) VALUES (?, ?, ?, ?, ?, '', datetime('now'), ?, 1, 0)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, 1, 0)`,
       args: [
         item.id,
         item.title,
         item.summary,
         item.tag,
         item.body,
+        item.coverUrl || '',
         index + 1,
       ] as InValue[],
     })),
